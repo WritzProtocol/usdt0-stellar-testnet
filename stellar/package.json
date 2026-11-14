@@ -1,0 +1,14 @@
+{
+  "name": "@writz/usdt0-stellar-testnet-ops",
+  "private": true,
+  "type": "module",
+  "description": "Stellar side of the USDT0 testnet token (Writz-deployed LayerZero OFT): deploy, wire, send, status",
+  "license": "MIT",
+  "scripts": {
+    "build": "./build.sh",
+    "status": "node oft.mjs status"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.3.0"
+  }
+}

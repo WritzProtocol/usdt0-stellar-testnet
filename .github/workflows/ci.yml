@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  evm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: forge build
+      - name: forge test (unit and Arbitrum Sepolia fork)
+        run: forge test -vv
+        env:
+          ARBITRUM_SEPOLIA_RPC_URL: https://sepolia-rollup.arbitrum.io/rpc
+
+  stellar:
+    # The recorded wasm hashes were built on macOS; build.sh fails if the rebuild differs.
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: ./build.sh
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: node --check oft.mjs
