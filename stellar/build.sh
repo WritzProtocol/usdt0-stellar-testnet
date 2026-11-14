@@ -18,8 +18,8 @@ set -euo pipefail
 LZ_VERSION="4.0.4"
 LZ_SOURCE_COMMIT="c7bd283934993d6a60c642c7831d3d7662200a68"
 TOOLCHAIN="1.90.0"
-EXPECTED_OFT_SHA256="${EXPECTED_OFT_SHA256:-d1e65a46e87f02032880485b4f43e916d3fc72dad7641de38962542dc9d74a0a}"
-EXPECTED_SAC_MANAGER_SHA256="${EXPECTED_SAC_MANAGER_SHA256:-db6b8e6083fc4054aca637788be6e714d29284c7ae850980b6480abc13631854}"
+EXPECTED_OFT_SHA256="${EXPECTED_OFT_SHA256-d1e65a46e87f02032880485b4f43e916d3fc72dad7641de38962542dc9d74a0a}"
+EXPECTED_SAC_MANAGER_SHA256="${EXPECTED_SAC_MANAGER_SHA256-db6b8e6083fc4054aca637788be6e714d29284c7ae850980b6480abc13631854}"
 
 PACKAGES=(
   "oft-stellar-contracts sha512-GVbKGX+QPx9LN5so7bBIuNCBtDWi1Q5KFB3Aq/GoMKn/DEkS2kwFUTkyTmZ/DuZhwyQb31I2Uo1BefAXh4C8aw=="
@@ -34,11 +34,7 @@ PACKAGES=(
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="$(mkdir -p "${1:-$HERE/out}" && cd "${1:-$HERE/out}" && pwd)"
-# A fixed build path: cargo hashes the absolute path of every path dependency
-# into its symbol metadata, so a different directory gives a different wasm.
-WORK_LINK="/tmp/writz-layerzero-build"
-rm -rf "$WORK_LINK" && mkdir -p "$WORK_LINK"
-WORK="$(cd "$WORK_LINK" && pwd -P)"
+WORK="$(cd "$(mktemp -d)" && pwd -P)"
 trap 'rm -rf "$WORK"' EXIT
 
 command -v npm >/dev/null || { echo "build.sh: npm is required to fetch the packages" >&2; exit 1; }
@@ -56,21 +52,30 @@ for entry in "${PACKAGES[@]}"; do
   tar -xzf "$tgz" -C "$WORK/src/$name" --strip-components 1
 done
 
-# 2. Resolve the vendored path dependencies the way LayerZero's build tool does,
-#    pointing every `dependencies/<package>` path at one copy of that package.
-find "$WORK/src" -name Cargo.toml -print0 | while IFS= read -r -d '' f; do
-  sed -i.bak -E "s#path *= *\"dependencies/#path = \"$WORK/src/#g" "$f" && rm "$f.bak"
+# 2. Resolve the vendored path dependencies the way LayerZero's build tool does: one copy of
+#    every dependency inside the package being built, under dependencies/, and every
+#    `dependencies/<package>` path pointing at that copy. Keeping them inside the package root
+#    lets cargo hash their paths relative to it, so the wasm does not depend on where it is built.
+DEPS=(oft-core-stellar-contracts oapp-stellar-contracts oapp-macros-stellar-contracts protocol-stellar-v2
+  common-utils-stellar-contracts common-utils-macros-stellar-contracts)
+for root in oft-stellar-contracts sac-manager-stellar-contracts; do
+  mkdir -p "$WORK/build/$root/dependencies"
+  cp -R "$WORK/src/$root/." "$WORK/build/$root/"
+  for dep in "${DEPS[@]}"; do cp -R "$WORK/src/$dep" "$WORK/build/$root/dependencies/$dep"; done
+  find "$WORK/build/$root" -name Cargo.toml -print0 | while IFS= read -r -d '' f; do
+    sed -i.bak -E "s#path *= *\"dependencies/#path = \"$WORK/build/$root/dependencies/#g" "$f" && rm "$f.bak"
+  done
 done
-cp "$HERE/locks/oft.Cargo.lock" "$WORK/src/oft-stellar-contracts/Cargo.lock"
-cp "$HERE/locks/sac-manager.Cargo.lock" "$WORK/src/sac-manager-stellar-contracts/Cargo.lock"
+cp "$HERE/locks/oft.Cargo.lock" "$WORK/build/oft-stellar-contracts/Cargo.lock"
+cp "$HERE/locks/sac-manager.Cargo.lock" "$WORK/build/sac-manager-stellar-contracts/Cargo.lock"
 
-# 3. Build with paths remapped, so the wasm does not depend on where it was built.
-export RUSTFLAGS="--remap-path-prefix=$WORK/src=/layerzero --remap-path-prefix=$(cd "${CARGO_HOME:-$HOME/.cargo}" && pwd -P)=/cargo"
-for pkg in oft-stellar-contracts sac-manager-stellar-contracts; do
-  (cd "$WORK/src/$pkg" && cargo "+$TOOLCHAIN" build --locked --release --target wasm32v1-none --quiet)
+# 3. Build, with absolute paths remapped out of any embedded strings.
+export RUSTFLAGS="--remap-path-prefix=$WORK/build=/layerzero --remap-path-prefix=$(cd "${CARGO_HOME:-$HOME/.cargo}" && pwd -P)=/cargo"
+for root in oft-stellar-contracts sac-manager-stellar-contracts; do
+  (cd "$WORK/build/$root" && cargo "+$TOOLCHAIN" build --locked --release --target wasm32v1-none --quiet)
 done
-cp "$WORK/src/oft-stellar-contracts/target/wasm32v1-none/release/oft.wasm" "$OUT/"
-cp "$WORK/src/sac-manager-stellar-contracts/target/wasm32v1-none/release/sac_manager.wasm" "$OUT/"
+cp "$WORK/build/oft-stellar-contracts/target/wasm32v1-none/release/oft.wasm" "$OUT/"
+cp "$WORK/build/sac-manager-stellar-contracts/target/wasm32v1-none/release/sac_manager.wasm" "$OUT/"
 
 # 4. Report, and compare with the recorded hashes when given.
 status=0
