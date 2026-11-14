@@ -303,11 +303,11 @@ async function wire() {
   const enforced = [{ eid: REMOTE.eid, msg_type: MSG_TYPE_SEND, options: lzReceiveOptions(REMOTE.lzReceiveGas) }];
 
   step(`set_peer ${REMOTE.eid} -> ${peer}`, () =>
-    invoke(oft, 'set_peer', ['--eid', String(REMOTE.eid), '--peer', evmToBytes32(peer), '--operator', owner]));
+    invoke(oft, 'set_peer', ['--eid', String(REMOTE.eid), '--peer', JSON.stringify(evmToBytes32(peer)), '--operator', owner]));
   step(`send library for ${REMOTE.eid}: ULN302 ${LZ.uln302}`, () =>
-    invoke(LZ.endpoint, 'set_send_library', ['--caller', owner, '--sender', oft, '--dst_eid', String(REMOTE.eid), '--new_lib', LZ.uln302]));
+    invoke(LZ.endpoint, 'set_send_library', ['--caller', owner, '--sender', oft, '--dst_eid', String(REMOTE.eid), '--new_lib', JSON.stringify(LZ.uln302)]));
   step(`receive library for ${REMOTE.eid}: ULN302, no grace period`, () =>
-    invoke(LZ.endpoint, 'set_receive_library', ['--caller', owner, '--receiver', oft, '--src_eid', String(REMOTE.eid), '--new_lib', LZ.uln302, '--grace_period', '0']));
+    invoke(LZ.endpoint, 'set_receive_library', ['--caller', owner, '--receiver', oft, '--src_eid', String(REMOTE.eid), '--new_lib', JSON.stringify(LZ.uln302), '--grace_period', '0']));
   step(`executor ${LZ.executor}; send ${REMOTE.sendConfirmations} and receive ${REMOTE.receiveConfirmations} confirmations; required DVN ${LZ.dvn}`, () =>
     invoke(LZ.endpoint, 'set_config', ['--caller', owner, '--oapp', oft, '--lib', LZ.uln302, '--params', JSON.stringify(params)]));
   step(`enforced options for ${REMOTE.eid}: lzReceive gas ${REMOTE.lzReceiveGas}`, () =>
