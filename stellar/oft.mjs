@@ -18,6 +18,7 @@
  * Steps, in order (each checks its result on chain and is safe to re-run):
  *   deploy       upload and deploy the SAC Manager and the OFT (MintBurn),
  *                grant the OFT MINTER_ROLE on the SAC Manager
+ *   upgrade      move both contracts to the wasm in WASM_DIR, keeping their IDs
  *   handover     SAC set_admin to the SAC Manager (signed by the issuer)
  *   wire         peer, send and receive library, executor and DVN config,
  *                enforced options, all for Arbitrum Sepolia (EID 40231)
@@ -29,6 +30,7 @@
  *
  * Usage (from stellar/, after `bun install` and ./build.sh):
  *   node oft.mjs deploy [--execute]
+ *   node oft.mjs upgrade --oft C... --sac-manager C... [--execute]
  *   node oft.mjs handover --sac-manager C... [--execute]
  *   node oft.mjs wire --oft C... --evm-peer 0x... [--execute]
  *   node oft.mjs lock-issuer --oft C... --sac-manager C... [--execute]
@@ -44,6 +46,7 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import { execFileSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -81,6 +84,8 @@ const CONFIG_TYPE_SEND_ULN = 2;
 const CONFIG_TYPE_RECEIVE_ULN = 3;
 const MAX_MESSAGE_SIZE = 10_000;
 const MINTER_ROLE = 'MINTER_ROLE';
+const UPGRADER_ROLE = 'UPGRADER_ROLE';
+const VOID_XDR_HEX = xdr.ScVal.scvVoid().toXDR('hex'); // MigrationData is () for these contracts
 
 const SOURCE = process.env.STELLAR_SOURCE || 'writz-deployer';
 const ISSUER_SOURCE = process.env.USDT0_ISSUER_SOURCE || 'writz-usdt0-issuer';
@@ -229,6 +234,49 @@ function deploy() {
   }
 }
 
+/** sha256 of the wasm a contract runs, read from the chain. */
+function onChainWasmSha256(id) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oft-fetch-'));
+  try {
+    const file = path.join(tmp, 'code.wasm');
+    execFileSync('stellar', ['contract', 'fetch', '--network', NETWORK, '--id', id, '--out-file', file], { stdio: ['ignore', 'ignore', 'ignore'] });
+    return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Moves both contracts to the wasm in WASM_DIR without changing their IDs or storage:
+ * grant UPGRADER_ROLE to the owner, upload, upgrade, migrate (a no-op for these
+ * contracts that clears the migrating flag), revoke the role, and compare the code
+ * running on chain with the local file.
+ */
+function upgrade() {
+  const owner = address(SOURCE);
+  const targets = [
+    { name: 'SAC Manager', id: contractIdOf(arg('--sac-manager'), '--sac-manager'), file: path.join(WASM_DIR, 'sac_manager.wasm') },
+    { name: 'OFT', id: contractIdOf(arg('--oft'), '--oft'), file: path.join(WASM_DIR, 'oft.wasm') },
+  ];
+  for (const t of targets) {
+    if (!fs.existsSync(t.file)) fail(`${t.file} not found; run ./build.sh first`);
+    const want = crypto.createHash('sha256').update(fs.readFileSync(t.file)).digest('hex');
+    const have = onChainWasmSha256(t.id);
+    console.log(`  ${t.name} ${t.id}\n    on chain ${have}\n    local    ${want}`);
+    if (have === want) {
+      console.log('    already running the local wasm; nothing to do');
+      continue;
+    }
+    const holds = read(t.id, 'has_role', ['--account', owner, '--role', UPGRADER_ROLE]) !== null;
+    if (!holds) step(`grant ${UPGRADER_ROLE} to ${owner}`, () => invoke(t.id, 'grant_role', ['--account', owner, '--role', UPGRADER_ROLE, '--caller', owner]));
+    const hash = step(`upload ${path.basename(t.file)}`, () => stellar(['contract', 'upload', '--wasm', t.file]).split('\n').pop()) ?? want;
+    step(`upgrade to ${hash}`, () => invoke(t.id, 'upgrade', ['--new_wasm_hash', hash, '--operator', owner]));
+    step('migrate (no-op, clears the migrating flag)', () => invoke(t.id, 'migrate', ['--migration_data', VOID_XDR_HEX, '--operator', owner]));
+    if (!holds) step(`revoke ${UPGRADER_ROLE} from ${owner}`, () => invoke(t.id, 'revoke_role', ['--account', owner, '--role', UPGRADER_ROLE, '--caller', owner]));
+    if (EXECUTE) check(onChainWasmSha256(t.id) === want, `${t.name} runs the local wasm`);
+  }
+}
+
 function handover() {
   const sacManager = contractIdOf(arg('--sac-manager'), '--sac-manager');
   const before = read(SAC, 'admin');
@@ -357,7 +405,7 @@ async function status({ oft = arg('--oft'), sacManager = arg('--sac-manager') } 
 
 // --------------------------------------------------------------------- main
 
-const commands = { deploy, handover, wire, 'lock-issuer': lockIssuer, send, status };
+const commands = { deploy, upgrade, handover, wire, 'lock-issuer': lockIssuer, send, status };
 if (!commands[command]) fail(`usage: oft.mjs <${Object.keys(commands).join('|')}> [flags] [--execute]`);
 if (!EXECUTE && command !== 'status') console.log('Plan only: nothing is sent without --execute.\n');
 await commands[command]();

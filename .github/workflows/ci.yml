@@ -37,9 +37,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
       - run: ./build.sh
-        env:
-          EXPECTED_OFT_SHA256: d1a0b198cfb4d0ea3d6e7b1efd1add95e4081bffd12f409d00efb380682676eb
-          EXPECTED_SAC_MANAGER_SHA256: 061a61793b53662ba9c1a996ed4df69fb9eb9c482aad3744ae30a1b056def72b
       - uses: actions/upload-artifact@v4
         if: always()
         with:

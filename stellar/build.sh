@@ -12,14 +12,20 @@
 # Rust toolchain their packages pin. The resulting wasm sha256 is compared
 # with the hashes below, which are also recorded in deployments/testnet.md.
 #
+# The recorded hashes are from an x86_64 Linux host. Cargo hashes the host
+# platform into symbol metadata, so another host builds a different but
+# equivalent wasm; to reproduce the recorded hashes elsewhere, run this script
+# in a linux/amd64 container (see the README). The build directory does not
+# matter.
+#
 # Usage: stellar/build.sh [out_dir]   (default: stellar/out)
 set -euo pipefail
 
 LZ_VERSION="4.0.4"
 LZ_SOURCE_COMMIT="c7bd283934993d6a60c642c7831d3d7662200a68"
 TOOLCHAIN="1.90.0"
-EXPECTED_OFT_SHA256="${EXPECTED_OFT_SHA256-d1e65a46e87f02032880485b4f43e916d3fc72dad7641de38962542dc9d74a0a}"
-EXPECTED_SAC_MANAGER_SHA256="${EXPECTED_SAC_MANAGER_SHA256-db6b8e6083fc4054aca637788be6e714d29284c7ae850980b6480abc13631854}"
+EXPECTED_OFT_SHA256="${EXPECTED_OFT_SHA256-c0db29f9951192ff2adaf05e1eb8ad71ac46dfb752161a6bacf85e2426fa3010}"
+EXPECTED_SAC_MANAGER_SHA256="${EXPECTED_SAC_MANAGER_SHA256-ca5c6eba1a430851bc5e82d3ea77e1484f6e4f94f784703d67a95ac932b208f9}"
 
 PACKAGES=(
   "oft-stellar-contracts sha512-GVbKGX+QPx9LN5so7bBIuNCBtDWi1Q5KFB3Aq/GoMKn/DEkS2kwFUTkyTmZ/DuZhwyQb31I2Uo1BefAXh4C8aw=="

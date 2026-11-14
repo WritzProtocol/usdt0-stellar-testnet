@@ -47,7 +47,16 @@ deployments/testnet.md
 stellar/build.sh
 ```
 
-Fetches LayerZero's npm packages at a pinned version without running any of their scripts, checks each against a pinned sha512 integrity, builds with LayerZero's `Cargo.lock` files and the Rust toolchain their packages pin, and fails unless the wasm sha256 matches the recorded hash. Requires `npm`, `rustup` and `openssl`. The build path is fixed (`/tmp/writz-layerzero-build`) because cargo hashes the absolute path of path dependencies into the wasm; the recorded hashes come from macOS, which CI rebuilds on every push.
+Fetches LayerZero's npm packages at a pinned version without running any of their scripts, checks each against a pinned sha512 integrity, builds with LayerZero's `Cargo.lock` files and the Rust toolchain their packages pin, and fails unless the wasm sha256 matches the hash recorded in the script and in [`deployments/testnet.md`](deployments/testnet.md). Requires `npm`, `rustup` and `openssl`.
+
+The recorded hashes come from an x86_64 Linux host, and CI rebuilds and compares them on every push. Cargo hashes the host platform into symbol metadata, so on macOS or ARM the same source gives a different wasm; to reproduce the recorded hashes there, build in a linux/amd64 container:
+
+```
+docker run --rm --platform linux/amd64 -v "$PWD":/repo -w /repo/stellar rust:1.90.0 \
+  bash -c 'apt-get update -qq && apt-get install -y -qq npm >/dev/null && ./build.sh'
+```
+
+The code each contract runs on chain can be compared with `node oft.mjs upgrade --oft C... --sac-manager C...`, which prints both hashes and, without `--execute`, changes nothing.
 
 ### EVM contract
 
