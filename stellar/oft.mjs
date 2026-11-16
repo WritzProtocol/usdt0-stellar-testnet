@@ -107,7 +107,9 @@ function fail(msg) {
 // ------------------------------------------------------------------ helpers
 
 function stellar(args, { source = SOURCE, send = true } = {}) {
-  const full = [...args.slice(0, 2), '--network', NETWORK, '--source', source, ...(send ? [] : ['--send=no']), ...args.slice(2)];
+  // Global flags go right after the subcommand: `contract invoke`, `contract deploy`, `tx new set-options`.
+  const head = args[0] === 'tx' ? 3 : 2;
+  const full = [...args.slice(0, head), '--network', NETWORK, '--source', source, ...(send ? [] : ['--send=no']), ...args.slice(head)];
   try {
     return execFileSync('stellar', full, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   } catch (e) {

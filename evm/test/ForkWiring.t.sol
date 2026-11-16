@@ -32,6 +32,14 @@ contract ForkWiringTest is Test, Usdt0TestOftBase {
         _checkWiring(oft, STELLAR_OFT);
     }
 
+    function test_wiring_can_be_re_run() public {
+        vm.startPrank(owner);
+        _wire(oft, STELLAR_OFT);
+        _wire(oft, STELLAR_OFT);
+        vm.stopPrank();
+        _checkWiring(oft, STELLAR_OFT);
+    }
+
     function test_quotes_a_send_to_stellar_with_the_enforced_options() public {
         vm.startPrank(owner);
         _wire(oft, STELLAR_OFT);

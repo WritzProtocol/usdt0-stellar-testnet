@@ -20,10 +20,10 @@ It follows the setup USDT0 itself uses on Stellar mainnet.
 | `WritzUsdt0TestOFT` | Arbitrum Sepolia | A plain LayerZero V2 OFT, 6 decimals, zero initial supply |
 
 - **Supply.** Every unit on Arbitrum Sepolia was burned on Stellar first. The supply on both chains together never exceeds what the Stellar side issued.
-- **Issuer.** Once the round trip works, the issuer account is locked (master weight 0). After that the only way to mint is the OFT through the SAC Manager, which is the trust model LayerZero's SAC Manager requires.
+- **Issuer.** The issuer account is locked (master weight 0, since 2026-11-16). The only way to mint is the OFT through the SAC Manager, which is the trust model LayerZero's SAC Manager requires. More test supply can only come from a `MINTER_ROLE` the SAC Manager's owner grants, on chain and visible.
 - **Decimals.** Shared decimals are 6. Amounts sent from Stellar lose anything below the sixth decimal (the dust stays with the sender).
 - **Security.** LayerZero Labs DVN required on both pathways, set explicitly rather than inherited from defaults. Confirmations: 1 from Stellar, 5 from Arbitrum Sepolia, matching what each side's endpoint expects.
-- **Enforced options.** `lzReceive` gas of 80,000 toward Arbitrum Sepolia and 500,000 toward Stellar, the values USDT0 enforces on mainnet.
+- **Enforced options.** `lzReceive` gas of 80,000 toward Arbitrum Sepolia, the value USDT0 enforces on mainnet. Toward Stellar, 4,000,000: the executor turns it into a stroop budget, and on Stellar testnet a receive and mint cost about 11.5 million stroops, five times what USDT0's mainnet value of 500,000 buys ([round trip](deployments/testnet.md#round-trip-2026-11-16)).
 
 Writz does not modify LayerZero's contracts. The Stellar side is LayerZero's published code, built reproducibly; the EVM side is LayerZero's `OFT` with a name and six decimals.
 
@@ -85,6 +85,8 @@ EVM_OFT=0x... STELLAR_RECIPIENT_BYTES32=0x... AMOUNT=1000000 \
 ```
 
 A Stellar account that receives the token must hold a USDT0 trustline first. Without it, the mint on Stellar fails and the message waits on the LayerZero endpoint until it is retried. A Stellar contract address needs no trustline.
+
+A message that the executor did not deliver can be executed by anyone once the DVN has verified it: call `lz_receive` on the Stellar OFT with the message's origin, GUID and payload, as recorded for message 2 of the [round trip](deployments/testnet.md#round-trip-2026-11-16).
 
 The full sequence used for the deployment (`deploy`, `handover`, `wire`, `lock-issuer` on Stellar; `Deploy`, `Wire` on Arbitrum Sepolia) is recorded step by step in [`deployments/testnet.md`](deployments/testnet.md).
 

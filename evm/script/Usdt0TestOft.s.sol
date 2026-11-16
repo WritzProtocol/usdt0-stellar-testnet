@@ -34,7 +34,11 @@ abstract contract Usdt0TestOftBase is Script {
     uint32 internal constant STELLAR_EID = 40600;
     uint64 internal constant SEND_CONFIRMATIONS = 5; // what Stellar's receive config waits for
     uint64 internal constant RECEIVE_CONFIRMATIONS = 1; // what Stellar's send config gives
-    uint128 internal constant STELLAR_LZ_RECEIVE_GAS = 500_000; // the value USDT0 enforces toward Stellar mainnet
+    // Toward Stellar, LayerZero's executor turns this gas into a budget of stroops for the lz_receive
+    // transaction. USDT0 enforces 500,000 toward Stellar mainnet; on Stellar testnet, where state rent is
+    // priced far higher, a receive and mint cost about 11.5 million stroops against the 2.3 million that
+    // 500,000 buys, and the executor refused to deliver. 4,000,000 buys about 18 million stroops.
+    uint128 internal constant STELLAR_LZ_RECEIVE_GAS = 4_000_000;
 
     uint16 internal constant MSG_TYPE_SEND = 1;
     uint32 internal constant CONFIG_TYPE_EXECUTOR = 1;
@@ -66,9 +70,13 @@ abstract contract Usdt0TestOftBase is Script {
         EnforcedOptionParam[] memory enforced = new EnforcedOptionParam[](1);
         enforced[0] = EnforcedOptionParam(STELLAR_EID, MSG_TYPE_SEND, _enforcedOptions());
 
-        oft.setPeer(STELLAR_EID, stellarPeer);
-        endpoint.setSendLibrary(address(oft), STELLAR_EID, SEND_ULN302);
-        endpoint.setReceiveLibrary(address(oft), STELLAR_EID, RECEIVE_ULN302, 0);
+        // Safe to re-run: the endpoint rejects setting a library that is already set (LZ_SameValue).
+        if (oft.peers(STELLAR_EID) != stellarPeer) oft.setPeer(STELLAR_EID, stellarPeer);
+        if (endpoint.isDefaultSendLibrary(address(oft), STELLAR_EID) || endpoint.getSendLibrary(address(oft), STELLAR_EID) != SEND_ULN302) {
+            endpoint.setSendLibrary(address(oft), STELLAR_EID, SEND_ULN302);
+        }
+        (address receiveLib, bool receiveIsDefault) = endpoint.getReceiveLibrary(address(oft), STELLAR_EID);
+        if (receiveIsDefault || receiveLib != RECEIVE_ULN302) endpoint.setReceiveLibrary(address(oft), STELLAR_EID, RECEIVE_ULN302, 0);
         endpoint.setConfig(address(oft), SEND_ULN302, sendConfig);
         endpoint.setConfig(address(oft), RECEIVE_ULN302, receiveConfig);
         oft.setEnforcedOptions(enforced);
